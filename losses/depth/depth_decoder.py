@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from collections import OrderedDict
-from loss.layers import *
+from losses.layers import *
 
 
 class DepthDecoder(nn.Module):

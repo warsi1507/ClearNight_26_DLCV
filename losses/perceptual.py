@@ -1,10 +1,10 @@
 
-# --- Imports --- #
+
 import torch
 import torch.nn.functional as F
 
 
-# --- Perceptual loss network  --- #
+# VGG16 perceptual loss (relu1_2, relu2_2, relu3_3), unchanged from the official code.
 class LossNetwork(torch.nn.Module):
     def __init__(self, vgg_model):
         super(LossNetwork, self).__init__()
