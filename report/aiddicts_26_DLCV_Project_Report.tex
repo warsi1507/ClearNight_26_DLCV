@@ -1,0 +1,229 @@
+\documentclass[8pt,a4paper]{article}
+
+% ------------------------------------------------
+% Packages
+% ------------------------------------------------
+\usepackage[
+    top=0.15in,
+    bottom=0.15in,
+    left=0.55in,
+    right=0.55in
+]{geometry}
+
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{makecell}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{titlesec}
+
+% ------------------------------------------------
+% Formatting
+% ------------------------------------------------
+
+% Black-and-white hyperlinks
+\hypersetup{
+    colorlinks=true,
+    allcolors=black
+}
+
+% Reduce line spacing
+\linespread{0.52}
+
+% Reduce paragraph spacing
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1pt}
+
+% Reduce section heading spacing
+\titlespacing*{\subsection}
+{0pt}{7pt}{3pt}
+
+% Table formatting
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.05}
+
+\captionsetup[table]{
+    font=small,
+    labelfont=bf,
+    position=top,
+    skip=3pt
+}
+
+% ------------------------------------------------
+% Document
+% ------------------------------------------------
+\begin{document}
+\thispagestyle{empty}
+
+% ------------------------------------------------
+% Title and Team Information
+% ------------------------------------------------
+\begin{center}
+
+{\large\bfseries
+Flare-Aware ClearNight: Synthetic Flare Supervision and Frequency-Decoupled Glow Suppression for Multi-Weather Nighttime Restoration}\\[5pt]
+
+\textbf{Team Name:} aiddicts
+\quad | \quad
+\textbf{Members:}
+Taes Padhihary (230101120), Vatsalya Singh (230103114), Vagisha Shrivastava (230101109), Md Samar Warsi (230101064), Himanshi Aggarwal (230106030)\\[3pt]
+
+\textbf{GitHub:}
+\url{https://github.com/warsi1507/ClearNight_26_DLCV}\\[2pt]
+
+\textbf{Checkpoints \& Logs:}
+\url{https://drive.google.com/drive/folders/1FC4oONCjTzKoZDJjRJH6oE78fH6srQho}
+
+\end{center}
+
+\vspace{-5pt}
+
+% ------------------------------------------------
+\subsection*{I. Abstract}
+% ------------------------------------------------
+\begin{enumerate}
+    \item Nighttime bad-weather images mix haze, rain streaks, raindrops and snow with uneven artificial light and flare — a setting earlier restoration work does not address.
+    \item Daytime multi-weather methods ignore that weather strength follows local illumination; nighttime methods handle one degradation at a time.
+    \item ClearNight (Liu et al., AAAI 2026) adds Retinex illumination and reflectance priors and weather-aware dynamic selection (WDS) blocks that route weather-specific convolution units — one network sharing common features while specialising per weather, removing coupled degradations in a single pass.
+\end{enumerate}
+
+% ------------------------------------------------
+\subsection*{II. Proposed Novelty \& Technical Contribution}
+% ------------------------------------------------
+\begin{enumerate}
+    \item Flare removal is weak in the paper because training data lack dedicated flare samples. We add (a) synthetic flare-only pairs from the paper's own flare model plus a synthetic flare validation set for checkpoint selection, and (b) a frequency-decoupled suppression module: a one-level Haar DWT on the stage-1 features, subtracting a gated glow estimate from the LL band only. The released code also zero-initialises every WDS decoder conv and unit, so the WDS branch never gets gradients; our baseline zeroes only the last decoder conv.
+    \item The baseline only sees flare mixed with weather and validates on weather data. Our model trains 20\% of crops on flare-only pairs and validates on flare. The DWT module corrects only the LL band, leaves LH, HL, HH unchanged, and is an identity at initialisation.
+\end{enumerate}
+
+% ------------------------------------------------
+\subsection*{III. Theoretical / Mathematical Justification}
+% ------------------------------------------------
+\begin{enumerate}
+    \item \textbf{Flare data} (paper Eq. 1): $X_f = \alpha X + \beta\,(L * K)$, with $\alpha = 0.995$, $K = w\,G_{\sigma_1} + (1-w)\,G_{\sigma_2}$. \textbf{Module}: $[LL, LH, HL, HH] = W F$, \; $LL' = LL - m \odot G_\theta(LL)$, \; $m = \mathrm{sigmoid}\big(C([LL, I_{\downarrow}])\big)$, \; $F' = W^{\top}[LL', LH, HL, HH]$.
+    \item $X$: clean image; $L$: thresholded light-source map; $G_\sigma$: Gaussians approximating the atmospheric point spread function ($\sigma_1 \in [4,15]$, $\sigma_2 \in [20,60]$ px, $w \in [0.3,0.7]$); $\beta$: glow peak in $[0.1, 0.5]$; $F$: stage-1 features; $W$: orthonormal Haar transform ($W^{\top}W = I$); $G_\theta$: small glow CNN; $I_{\downarrow}$: illumination prior pooled to LL size; $m$: spatial gate. By the convolution theorem, $\hat{G}_\sigma(\omega) = e^{-\sigma^2\omega^2/2}$ decays fast for wide $\sigma$, so glow is low-frequency. A Taylor expansion of the $2\times2$ Haar bands gives $LH \approx -\Delta\,\partial f/\partial y$, $HL \approx -\Delta\,\partial f/\partial x$, $HH = O(\Delta^2)$: the detail bands measure gradients, which are small for glow, so glow lies in $LL$ while edges are kept. The last layer of $G_\theta$ starts at zero, so $F' = F$ at initialisation with non-zero gradients. With all decoder weights zero and ReLU activations, $\partial \mathcal{L}/\partial W_l = 0$ at every step; zeroing only the last convolution keeps the zero output but lets gradients flow.
+    \item Causal link: before flare data, the unprocessed flare input (32.59 dB) beat our models (30.8 to 31.0 dB at 10k iterations), and the test residual $X_f - X$ fits a blurred light-source map (best $\sigma$ 12 to 25 px, median $R^2 = 0.62$), consistent with Eq. 1 — so flare-only supervision targets the flare test distribution directly. The DWT module can help only if $G_\theta$ models glow of that width.
+\end{enumerate}
+
+% ------------------------------------------------
+\subsection*{IV. Comparative Results \& Empirical Evaluation}
+% ------------------------------------------------
+\begin{enumerate}
+    \item AllWeatherNight: 8000 synthetic training pairs, split by scene into 7200/800 train/val; 1000 test pairs over 7 subsets (300/200/100 per subset), at full $640\times360$ resolution. All models: $256\times256$ crops (3 per step), 20 epochs $\times$ 1200 steps (24k iterations), Adam ($2\times10^{-4}$), cosine restarts, fp32, smooth-L1 + BCE + load-balance + router L2, seed 20, single Kaggle T4, checkpoint chosen on validation PSNR.
+    \item Table~\ref{tab:results} compares the reproduced baseline and our two variants; PSNR/SSIM are means over the 7 test subsets.
+    \item Synthetic flare supervision raises flare PSNR by +1.99 dB (34.31 $\rightarrow$ 36.30, 3.7 dB above the unprocessed input) and raindrop PSNR by +0.60 dB, with mean PSNR +0.04 dB. Adding the DWT module changes mean PSNR by $-0.08$ dB relative to flare data alone.
+\end{enumerate}
+
+% ------------------------------------------------
+% Results Table
+% ------------------------------------------------
+\begin{center}
+
+\captionof{table}{
+Quantitative comparison on AllWeatherNight (1000 synthetic test images, full resolution); best in bold. Latency: median of 8 runs, CPU 4 threads, one $640\times360$ image.
+}
+
+\label{tab:results}
+
+\small
+
+\begin{tabularx}{\linewidth}{
+    @{}X c c c c c@{}
+}
+
+\toprule
+
+\textbf{Method}
+&
+\makecell{\textbf{PSNR}\\(dB $\uparrow$)}
+&
+\makecell{\textbf{SSIM}\\($\uparrow$)}
+&
+\makecell{\textbf{Flare PSNR}\\(dB $\uparrow$)}
+&
+\makecell{\textbf{Params}\\(M)}
+&
+\makecell{\textbf{Latency}\\(ms $\downarrow$)}
+\\
+
+\midrule
+
+Baseline (ClearNight, WDS init fix)
+&
+29.68
+&
+\textbf{0.8795}
+&
+34.31
+&
+\textbf{2.865}
+&
+\textbf{4499}
+\\
+
+\textbf{Ours-A} (+ synthetic flare data)
+&
+\textbf{29.72}
+&
+0.8786
+&
+\textbf{36.30}
+&
+\textbf{2.865}
+&
+\textbf{4499}
+\\
+
+Ours-B (+ flare data + DWT module)
+&
+29.65
+&
+0.8766
+&
+36.11
+&
+2.879
+&
+4602
+\\
+
+\midrule
+
+$\Delta$ (Ours-A -- Baseline)
+&
++0.04
+&
+$-$0.0009
+&
++1.99
+&
++0.000
+&
++0
+\\
+
+$\Delta$ (Ours-B -- Baseline)
+&
+$-$0.03
+&
+$-$0.0029
+&
++1.80
+&
++0.014
+&
++103
+\\
+
+\bottomrule
+
+\end{tabularx}
+
+\end{center}
+
+\vspace{-5pt}
+
+\textbf{Result Interpretation:}
+Flare-only supervision is the effective part: flare PSNR rises 1.99 dB (73\% of flare images improve, $p<0.01$) and raindrop 0.60 dB, while rain, snow and haze drop 0.2 to 0.8 dB since 20\% of crops move to flare samples; the mean is unchanged (+0.04 dB). The DWT module added nothing on top of flare data ($-0.08 \pm 0.02$ dB): its glow estimator's receptive field ($\approx$10 px) is too small for the measured glow width (12 to 25 px) and its gate sits on the light sources; a multi-level DWT is the natural fix. All models used 24k iterations, about 5\% of the paper's schedule, so absolute scores are below the paper (29.88 vs 34.50 dB official protocol), but the comparison is fair — every model used identical data, schedule and settings.
+
+\end{document}
